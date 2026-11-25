@@ -197,6 +197,7 @@ class CreateWindowCall(
     @JvmField var autoplay: Boolean = false,
     @JvmField var swipeNavigation: Boolean = false,
     @JvmField var pinchZoom: Boolean = false,
+    @JvmField var noBackgroundThrottling: Boolean = false,
     @JvmField var parent: Long = 0L,
     @JvmField var viewType: String = "",
     @JvmField var viewArgs: String = "",
@@ -217,6 +218,7 @@ class CreateWindowCall(
         autoplay = r.bool()
         swipeNavigation = r.bool()
         pinchZoom = r.bool()
+        noBackgroundThrottling = r.bool()
         parent = r.int()
         viewType = r.string()
         viewArgs = r.string()
@@ -1044,6 +1046,14 @@ class ShowMenuCall(
     }
 }
 
+class HideMenuCall(
+    @JvmField var id: Long = 0L,
+) {
+    constructor(r: WireReader) : this() {
+        id = r.int()
+    }
+}
+
 class SetBackAvailableCall(
     @JvmField var id: Long = 0L,
     @JvmField var on: Boolean = false,
@@ -1160,6 +1170,38 @@ class TextAdvancesReply(
     }
 }
 
+class MeasureTextRunCall(
+    @JvmField var family: String = "",
+    @JvmField var size: Double = 0.0,
+    @JvmField var weight: Long = 0L,
+    @JvmField var italic: Boolean = false,
+    @JvmField var noKern: Boolean = false,
+    @JvmField var text: String = "",
+    @JvmField var start: Long = 0L,
+    @JvmField var end: Long = 0L,
+    @JvmField var rtl: Boolean = false,
+) {
+    constructor(r: WireReader) : this() {
+        family = r.string()
+        size = r.float()
+        weight = r.int()
+        italic = r.bool()
+        noKern = r.bool()
+        text = r.string()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
+    }
+}
+
+class MeasureTextRunReply(
+    @JvmField var width: Double = 0.0,
+) {
+    fun encode(w: WireWriter) {
+        w.float(width)
+    }
+}
+
 class DrawTextCall(
     @JvmField var family: String = "",
     @JvmField var size: Double = 0.0,
@@ -1168,6 +1210,9 @@ class DrawTextCall(
     @JvmField var text: String = "",
     @JvmField var scale: Double = 0.0,
     @JvmField var dx: Double = 0.0,
+    @JvmField var start: Long = 0L,
+    @JvmField var end: Long = 0L,
+    @JvmField var rtl: Boolean = false,
 ) {
     constructor(r: WireReader) : this() {
         family = r.string()
@@ -1177,6 +1222,9 @@ class DrawTextCall(
         text = r.string()
         scale = r.float()
         dx = r.float()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
     }
 }
 
@@ -1225,6 +1273,18 @@ class SetFrameRateCall(
     constructor(r: WireReader) : this() {
         id = r.int()
         fps = r.float()
+    }
+}
+
+class SetTabTitleCall(
+    @JvmField var id: Long = 0L,
+    @JvmField var index: Long = 0L,
+    @JvmField var title: String = "",
+) {
+    constructor(r: WireReader) : this() {
+        id = r.int()
+        index = r.int()
+        title = r.string()
     }
 }
 
@@ -1446,6 +1506,8 @@ interface HostCalls {
     fun announce(c: AnnounceCall)
     /** the system's edit menu at a point, with the actions given (cut, copy, paste, selectAll); TextCommand answers */
     fun showMenu(c: ShowMenuCall)
+    /** takes the edit menu of ShowMenu away */
+    fun hideMenu(c: HideMenuCall)
     /** whether the content takes the system's back */
     fun setBackAvailable(c: SetBackAvailableCall)
     /** the system's magnifier of what is at a point */
@@ -1457,12 +1519,16 @@ interface HostCalls {
     fun measureText(c: MeasureTextCall): MeasureTextReply
     /** the advance of each UTF-16 unit of Text laid out as a whole (getTextRunAdvances) */
     fun textAdvances(c: TextAdvancesCall): TextAdvancesReply
-    /** draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color */
+    /** how wide Text's UTF-16 units [Start, End) are laid out within the whole of Text, right to left if RTL, as a TextView measures a span (getRunAdvance) */
+    fun measureTextRun(c: MeasureTextRunCall): MeasureTextRunReply
+    /** draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color. When End > 0, only its UTF-16 units [Start, End), laid out within the whole, right to left if RTL (drawTextRun), from the pen at their left */
     fun drawText(c: DrawTextCall): DrawTextReply
     /** adds a font file under Family, or its own family when empty */
     fun registerFont(c: RegisterFontCall): RegisterFontReply
     /** how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface) */
     fun setFrameRate(c: SetFrameRateCall)
+    /** a tab's title, which the bar shows */
+    fun setTabTitle(c: SetTabTitleCall)
     /** a website data store of a session: kept on disk under ID, a UUID, unless Ephemeral; Store numbers it, Error says why there is none */
     fun newDataStore(c: NewDataStoreCall): NewDataStoreReply
     /** the end of the app's use of a store, which goes once no web view uses it */
@@ -1559,21 +1625,24 @@ fun dispatchCall(h: HostCalls, buf: ByteArray): ByteArray? {
         75 -> h.accessibilityChanged(AccessibilityChangedCall(r))
         76 -> h.announce(AnnounceCall(r))
         77 -> h.showMenu(ShowMenuCall(r))
-        78 -> h.setBackAvailable(SetBackAvailableCall(r))
-        79 -> h.showMagnifier(ShowMagnifierCall(r))
-        80 -> h.hideMagnifier(HideMagnifierCall(r))
-        81 -> { h.textMetrics(TextMetricsCall(r)).encode(w); return w.toByteArray() }
-        82 -> { h.measureText(MeasureTextCall(r)).encode(w); return w.toByteArray() }
-        83 -> { h.textAdvances(TextAdvancesCall(r)).encode(w); return w.toByteArray() }
-        84 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
-        85 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
-        86 -> h.setFrameRate(SetFrameRateCall(r))
-        87 -> { h.newDataStore(NewDataStoreCall(r)).encode(w); return w.toByteArray() }
-        88 -> h.closeDataStore(CloseDataStoreCall(r))
-        89 -> h.listCookies(ListCookiesCall(r))
-        90 -> h.setCookie(SetCookieCall(r))
-        91 -> h.deleteCookie(DeleteCookieCall(r))
-        92 -> h.clearSiteData(ClearSiteDataCall(r))
+        78 -> h.hideMenu(HideMenuCall(r))
+        79 -> h.setBackAvailable(SetBackAvailableCall(r))
+        80 -> h.showMagnifier(ShowMagnifierCall(r))
+        81 -> h.hideMagnifier(HideMagnifierCall(r))
+        82 -> { h.textMetrics(TextMetricsCall(r)).encode(w); return w.toByteArray() }
+        83 -> { h.measureText(MeasureTextCall(r)).encode(w); return w.toByteArray() }
+        84 -> { h.textAdvances(TextAdvancesCall(r)).encode(w); return w.toByteArray() }
+        85 -> { h.measureTextRun(MeasureTextRunCall(r)).encode(w); return w.toByteArray() }
+        86 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
+        87 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
+        88 -> h.setFrameRate(SetFrameRateCall(r))
+        89 -> h.setTabTitle(SetTabTitleCall(r))
+        90 -> { h.newDataStore(NewDataStoreCall(r)).encode(w); return w.toByteArray() }
+        91 -> h.closeDataStore(CloseDataStoreCall(r))
+        92 -> h.listCookies(ListCookiesCall(r))
+        93 -> h.setCookie(SetCookieCall(r))
+        94 -> h.deleteCookie(DeleteCookieCall(r))
+        95 -> h.clearSiteData(ClearSiteDataCall(r))
     }
     return null
 }

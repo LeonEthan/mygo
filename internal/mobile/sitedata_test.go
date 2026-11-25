@@ -103,7 +103,7 @@ func newSiteHost(t *testing.T) (*Backend, *siteHost) {
 			fields = []any{r.Int(), r.Int(), r.Int()}
 		case wire.CallCreateWindow:
 			fields = []any{r.Int(), r.Bool(), r.Bool(), r.Int(), r.Bool(), r.Strings(), r.Strings(), r.Strings(), r.String(), r.String(),
-				r.Bool(), r.Bool(), r.Bool(), r.Bool(), r.Int(), r.String(), r.String(), r.Int()}
+				r.Bool(), r.Bool(), r.Bool(), r.Bool(), r.Bool(), r.Int(), r.String(), r.String(), r.Int()}
 		default:
 			return nil
 		}

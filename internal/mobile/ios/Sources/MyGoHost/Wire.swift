@@ -176,6 +176,7 @@ public struct CreateWindowCall {
     public var autoplay: Bool = false
     public var swipeNavigation: Bool = false
     public var pinchZoom: Bool = false
+    public var noBackgroundThrottling: Bool = false
     public var parent: Int = 0
     public var viewType: String = ""
     public var viewArgs: String = ""
@@ -196,6 +197,7 @@ public struct CreateWindowCall {
         autoplay = r.bool()
         swipeNavigation = r.bool()
         pinchZoom = r.bool()
+        noBackgroundThrottling = r.bool()
         parent = r.int()
         viewType = r.string()
         viewArgs = r.string()
@@ -1025,6 +1027,14 @@ public struct ShowMenuCall {
     }
 }
 
+public struct HideMenuCall {
+    public var id: Int = 0
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+    }
+}
+
 public struct SetBackAvailableCall {
     public var id: Int = 0
     public var on: Bool = false
@@ -1141,6 +1151,38 @@ public struct TextAdvancesReply {
     }
 }
 
+public struct MeasureTextRunCall {
+    public var family: String = ""
+    public var size: Double = 0
+    public var weight: Int = 0
+    public var italic: Bool = false
+    public var noKern: Bool = false
+    public var text: String = ""
+    public var start: Int = 0
+    public var end: Int = 0
+    public var rtl: Bool = false
+    public init() {}
+    init(_ r: inout WireReader) {
+        family = r.string()
+        size = r.float()
+        weight = r.int()
+        italic = r.bool()
+        noKern = r.bool()
+        text = r.string()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
+    }
+}
+
+public struct MeasureTextRunReply {
+    public var width: Double = 0
+    public init() {}
+    func encode(_ w: inout WireWriter) {
+        w.float(width)
+    }
+}
+
 public struct DrawTextCall {
     public var family: String = ""
     public var size: Double = 0
@@ -1149,6 +1191,9 @@ public struct DrawTextCall {
     public var text: String = ""
     public var scale: Double = 0
     public var dx: Double = 0
+    public var start: Int = 0
+    public var end: Int = 0
+    public var rtl: Bool = false
     public init() {}
     init(_ r: inout WireReader) {
         family = r.string()
@@ -1158,6 +1203,9 @@ public struct DrawTextCall {
         text = r.string()
         scale = r.float()
         dx = r.float()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
     }
 }
 
@@ -1206,6 +1254,18 @@ public struct SetFrameRateCall {
     init(_ r: inout WireReader) {
         id = r.int()
         fps = r.float()
+    }
+}
+
+public struct SetTabTitleCall {
+    public var id: Int = 0
+    public var index: Int = 0
+    public var title: String = ""
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+        index = r.int()
+        title = r.string()
     }
 }
 
@@ -1427,6 +1487,8 @@ public protocol HostCalls: AnyObject {
     func announce(_ c: AnnounceCall)
     /// the system's edit menu at a point, with the actions given (cut, copy, paste, selectAll); TextCommand answers
     func showMenu(_ c: ShowMenuCall)
+    /// takes the edit menu of ShowMenu away
+    func hideMenu(_ c: HideMenuCall)
     /// whether the content takes the system's back
     func setBackAvailable(_ c: SetBackAvailableCall)
     /// the system's magnifier of what is at a point
@@ -1438,12 +1500,16 @@ public protocol HostCalls: AnyObject {
     func measureText(_ c: MeasureTextCall) -> MeasureTextReply
     /// the advance of each UTF-16 unit of Text laid out as a whole (getTextRunAdvances)
     func textAdvances(_ c: TextAdvancesCall) -> TextAdvancesReply
-    /// draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color
+    /// how wide Text's UTF-16 units [Start, End) are laid out within the whole of Text, right to left if RTL, as a TextView measures a span (getRunAdvance)
+    func measureTextRun(_ c: MeasureTextRunCall) -> MeasureTextRunReply
+    /// draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color. When End > 0, only its UTF-16 units [Start, End), laid out within the whole, right to left if RTL (drawTextRun), from the pen at their left
     func drawText(_ c: DrawTextCall) -> DrawTextReply
     /// adds a font file under Family, or its own family when empty
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
     /// how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)
     func setFrameRate(_ c: SetFrameRateCall)
+    /// a tab's title, which the bar shows
+    func setTabTitle(_ c: SetTabTitleCall)
     /// a website data store of a session: kept on disk under ID, a UUID, unless Ephemeral; Store numbers it, Error says why there is none
     func newDataStore(_ c: NewDataStoreCall) -> NewDataStoreReply
     /// the end of the app's use of a store, which goes once no web view uses it
@@ -1695,48 +1761,57 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         h.showMenu(ShowMenuCall(&r))
         return nil
     case 78:
-        h.setBackAvailable(SetBackAvailableCall(&r))
+        h.hideMenu(HideMenuCall(&r))
         return nil
     case 79:
-        h.showMagnifier(ShowMagnifierCall(&r))
+        h.setBackAvailable(SetBackAvailableCall(&r))
         return nil
     case 80:
-        h.hideMagnifier(HideMagnifierCall(&r))
+        h.showMagnifier(ShowMagnifierCall(&r))
         return nil
     case 81:
+        h.hideMagnifier(HideMagnifierCall(&r))
+        return nil
+    case 82:
         h.textMetrics(TextMetricsCall(&r)).encode(&w)
         return w.buf
-    case 82:
+    case 83:
         h.measureText(MeasureTextCall(&r)).encode(&w)
         return w.buf
-    case 83:
+    case 84:
         h.textAdvances(TextAdvancesCall(&r)).encode(&w)
         return w.buf
-    case 84:
-        h.drawText(DrawTextCall(&r)).encode(&w)
-        return w.buf
     case 85:
-        h.registerFont(RegisterFontCall(&r)).encode(&w)
+        h.measureTextRun(MeasureTextRunCall(&r)).encode(&w)
         return w.buf
     case 86:
-        h.setFrameRate(SetFrameRateCall(&r))
-        return nil
+        h.drawText(DrawTextCall(&r)).encode(&w)
+        return w.buf
     case 87:
-        h.newDataStore(NewDataStoreCall(&r)).encode(&w)
+        h.registerFont(RegisterFontCall(&r)).encode(&w)
         return w.buf
     case 88:
-        h.closeDataStore(CloseDataStoreCall(&r))
+        h.setFrameRate(SetFrameRateCall(&r))
         return nil
     case 89:
-        h.listCookies(ListCookiesCall(&r))
+        h.setTabTitle(SetTabTitleCall(&r))
         return nil
     case 90:
-        h.setCookie(SetCookieCall(&r))
-        return nil
+        h.newDataStore(NewDataStoreCall(&r)).encode(&w)
+        return w.buf
     case 91:
-        h.deleteCookie(DeleteCookieCall(&r))
+        h.closeDataStore(CloseDataStoreCall(&r))
         return nil
     case 92:
+        h.listCookies(ListCookiesCall(&r))
+        return nil
+    case 93:
+        h.setCookie(SetCookieCall(&r))
+        return nil
+    case 94:
+        h.deleteCookie(DeleteCookieCall(&r))
+        return nil
+    case 95:
         h.clearSiteData(ClearSiteDataCall(&r))
         return nil
     default:
