@@ -20,6 +20,9 @@ import (
 
 var (
 	sessionsOnce                              sync.Once
+	proxySettingsNew                          func(*byte, ptr) ptr
+	proxySettingsFree                         func(ptr)
+	setProxySettings                          func(ptr, int32, ptr)
 	webkitWebsiteDataManagerNew               func(k1, v1, k2, v2 *byte, end ptr) ptr
 	webkitWebsiteDataManagerNewEphemeral      func() ptr
 	webkitWebContextNewWithWebsiteDataManager func(manager ptr) ptr
@@ -28,6 +31,9 @@ var (
 )
 
 func bindSessions() {
+	bind(libWebKit, &proxySettingsNew, "webkit_network_proxy_settings_new")
+	bind(libWebKit, &proxySettingsFree, "webkit_network_proxy_settings_free")
+	bind(libWebKit, &setProxySettings, "webkit_website_data_manager_set_network_proxy_settings")
 	bind(libWebKit, &webkitWebsiteDataManagerNew, "webkit_website_data_manager_new")
 	bind(libWebKit, &webkitWebsiteDataManagerNewEphemeral, "webkit_website_data_manager_new_ephemeral")
 	bind(libWebKit, &webkitWebContextNewWithWebsiteDataManager, "webkit_web_context_new_with_website_data_manager")
@@ -38,6 +44,7 @@ func bindSessions() {
 // dataStore is a store of the pages of a session: a web context, and the
 // custom schemes registered on it.
 type dataStore struct {
+	proxy   *platform.SessionProxyConfig
 	b       *Backend
 	ctx     ptr
 	schemes map[string]bool
@@ -69,9 +76,22 @@ func (a appController) NewDataStore(opts platform.DataStoreOptions) (platform.Da
 	if manager == 0 {
 		return nil, fmt.Errorf("WebKitGTK made no website data manager")
 	}
+	if opts.Proxy != nil {
+		if proxySettingsNew == nil || proxySettingsFree == nil || setProxySettings == nil {
+			gObjectUnref(manager)
+			return nil, platform.ErrUnsupported
+		}
+		settings := proxySettingsNew(cs(opts.Proxy.HTTPProxy), 0)
+		if settings == 0 {
+			gObjectUnref(manager)
+			return nil, fmt.Errorf("cannot create network proxy settings")
+		}
+		setProxySettings(manager, 2, settings)
+		proxySettingsFree(settings)
+	}
 	ctx := webkitWebContextNewWithWebsiteDataManager(manager)
 	gObjectUnref(manager) // the context holds it
-	s := &dataStore{b: a.b, ctx: ctx, schemes: map[string]bool{}}
+	s := &dataStore{proxy: opts.Proxy, b: a.b, ctx: ctx, schemes: map[string]bool{}}
 	a.b.stores = append(a.b.stores, s)
 	a.b.applyWebLanguages()
 	connect(ctx, "download-started", cbDownloadStarted, 0)

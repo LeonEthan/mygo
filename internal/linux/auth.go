@@ -3,7 +3,9 @@
 package linux
 
 import (
+	"net"
 	"net/url"
+	"strconv"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -90,13 +92,20 @@ func initAuthCallbacks() {
 		if scheme == "" {
 			return false
 		}
-		resp := w.h.AuthRequested(platform.AuthRequest{
+		request := platform.AuthRequest{
 			Host:    goStr(webkitAuthenticationRequestGetHost(req)),
 			Port:    int(webkitAuthenticationRequestGetPort(req)),
 			Realm:   goStr(webkitAuthenticationRequestGetRealm(req)),
 			Scheme:  scheme,
 			IsProxy: webkitAuthenticationRequestIsForProxy(req),
-		})
+		}
+		var resp platform.AuthResponse
+		if s, ok := w.opts.DataStore.(*dataStore); ok && s.proxy != nil && request.IsProxy && request.Scheme == "basic" && s.proxy.HTTPProxy == "http://"+net.JoinHostPort(request.Host, strconv.Itoa(request.Port)) {
+			resp.Username = s.proxy.Username
+			resp.Password = s.proxy.Password
+		} else {
+			resp = w.h.AuthRequested(request)
+		}
 		switch {
 		case resp.Default:
 			return false

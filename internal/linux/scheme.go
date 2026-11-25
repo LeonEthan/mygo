@@ -5,6 +5,7 @@ package linux
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"syscall"
@@ -74,28 +75,33 @@ func (b *Backend) serveScheme(req ptr) {
 	}
 	if webkitURISchemeRequestGetHTTPBody != nil {
 		if stream := webkitURISchemeRequestGetHTTPBody(req); stream != 0 {
-			r.Body = platform.BytesBody(readStream(stream))
+			var status int
+			r.Body, status = readStream(stream, &r.BodyReservation)
 			gObjectUnref(stream)
+			if status != 0 {
+				r.BodyReservation.Release()
+				t.Respond(status, nil)
+				t.Finish()
+				return
+			}
 		}
 	}
 	w.h.SchemeRequest(r)
 }
 
-func readStream(stream ptr) []byte {
-	var out []byte
-	buf := make([]byte, 64<<10)
-	for {
+func readStream(stream ptr, budget *platform.SchemeBodyReservation) (io.ReadCloser, int) {
+	return budget.Read(func(buf []byte) (int, bool, error) {
 		var n uintptr
 		var gerr ptr
 		ok := gInputStreamReadAll(stream, unsafe.Pointer(&buf[0]), uintptr(len(buf)), &n, 0, &gerr)
-		out = append(out, buf[:n]...)
 		if gerr != 0 {
 			gErrorFree(gerr)
 		}
-		if !ok || n < uintptr(len(buf)) {
-			return out
+		if !ok {
+			return 0, false, io.ErrUnexpectedEOF
 		}
-	}
+		return int(n), n < uintptr(len(buf)), nil
+	})
 }
 
 // schemeTask streams a response to WebKit through a pipe, which WebKit

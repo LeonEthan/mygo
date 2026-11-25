@@ -1084,7 +1084,7 @@ func (w *window) GPUProcessID() int {
 	if w.webview == 0 {
 		return 0
 	}
-	env8 := queryInterface(w.b.env, &iidICoreWebView2Environment8)
+	env8 := queryInterface(w.environment(), &iidICoreWebView2Environment8)
 	if env8 == 0 {
 		return 0
 	}
@@ -1366,8 +1366,14 @@ func (w *window) resourceRequested(_, args uintptr) {
 	sreq := &platform.SchemeRequest{Method: takeWstr(p), URL: target, Header: requestHeaders(req)}
 	var content uintptr
 	if comCall(req, reqGetContent, uintptr(unsafe.Pointer(&content))) == sOK && content != 0 {
-		sreq.Body = platform.BytesBody(readStream(content))
+		var status int
+		sreq.Body, status = readStream(content, &sreq.BodyReservation)
 		release(content)
+		if status != 0 {
+			sreq.BodyReservation.Release()
+			w.respond(args, 0, status, nil, nil)
+			return
+		}
 	}
 	if resource == media {
 		// Media elements ask for the rest of the file from a byte on
@@ -1380,6 +1386,7 @@ func (w *window) resourceRequested(_, args uintptr) {
 	}
 	var deferral uintptr
 	if comCall(args, resReqGetDeferral, uintptr(unsafe.Pointer(&deferral))) != sOK {
+		sreq.BodyReservation.Release()
 		return
 	}
 	addRef(args)
@@ -1438,7 +1445,7 @@ func (w *window) respondStream(args, deferral uintptr, status int, header http.H
 		}
 	}
 	var resp uintptr
-	hr := comCall(w.b.env, envCreateWebResourceResponse, stream, uintptr(status),
+	hr := comCall(w.environment(), envCreateWebResourceResponse, stream, uintptr(status),
 		uintptr(unsafe.Pointer(u16(http.StatusText(status)))), uintptr(unsafe.Pointer(u16(raw.String()))), uintptr(unsafe.Pointer(&resp)))
 	release(stream)
 	if !failed(hr) && resp != 0 {

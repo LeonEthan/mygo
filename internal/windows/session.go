@@ -4,6 +4,8 @@ package windows
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"unsafe"
@@ -37,11 +39,15 @@ var errNoProfiles = errors.New("mygo: sessions need a newer WebView2 Runtime (pr
 // dataStore is the WebView2 profile of a session, and the state of the
 // cookie calls of its web views.
 type dataStore struct {
-	b       *Backend
-	profile string
-	private bool
-	closed  bool
-	cookies cookieStore
+	proxy       *platform.SessionProxyConfig
+	env         uintptr
+	envStarting bool
+	waiters     []func(uintptr)
+	b           *Backend
+	profile     string
+	private     bool
+	closed      bool
+	cookies     cookieStore
 }
 
 // NewDataStore names the profile of a session: "mygo-" and the session's
@@ -49,7 +55,10 @@ type dataStore struct {
 // of the run has.
 func (a appController) NewDataStore(opts platform.DataStoreOptions) (platform.DataStore, error) {
 	b := a.b
-	s := &dataStore{b: b, profile: "mygo-" + opts.ID, private: opts.Ephemeral}
+	if opts.Proxy != nil && (os.Getenv("WEBVIEW2_USER_DATA_FOLDER") != "" || os.Getenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") != "") {
+		return nil, errors.New("mygo: a proxied session cannot use WebView2 environment overrides")
+	}
+	s := &dataStore{proxy: opts.Proxy, b: b, profile: "mygo-" + opts.ID, private: opts.Ephemeral}
 	if opts.Ephemeral {
 		b.privateStores++
 		s.profile = "mygo-private-" + strconv.Itoa(b.privateStores)
@@ -69,6 +78,10 @@ func (s *dataStore) Close() {
 	s.closed = true
 	s.b.closeCookieView(&s.cookies)
 	s.b.dropStores()
+	if s.env != 0 {
+		release(s.env)
+		s.env = 0
+	}
 }
 
 // dropStores forgets the closed stores no cookie call or hidden web view
@@ -102,18 +115,80 @@ func storeOf(store platform.DataStore) *dataStore {
 // s is a *dataStore, not a platform.DataStore, which a nil *dataStore
 // would make a non-nil interface of.
 func (b *Backend) createController(s *dataStore, hwnd uintptr, composition bool, handler uintptr) uintptr {
+	if s == nil || s.proxy == nil {
+		return createController(b.env, s, hwnd, composition, handler)
+	}
+	if s.closed {
+		return eFail
+	}
+	if s.env != 0 {
+		return createController(s.env, s, hwnd, composition, handler)
+	}
+	addRef(handler)
+	s.waiters = append(s.waiters, func(env uintptr) {
+		defer release(handler)
+		hr := uintptr(eFail)
+		if env != 0 && !s.closed {
+			hr = createController(env, s, hwnd, composition, handler)
+		}
+		if failed(hr) {
+			comCall(handler, 3, hr, 0)
+		}
+	})
+	if s.envStarting {
+		return sOK
+	}
+	s.envStarting = true
+	dir := os.Getenv("LOCALAPPDATA")
+	if dir == "" {
+		dir = os.TempDir()
+	}
+	userData := filepath.Join(dir, sanitize(b.name), "WebView2Proxy", s.profile)
+	done := func(env uintptr, err error) {
+		s.envStarting = false
+		if s.closed && env != 0 {
+			release(env)
+			env = 0
+		}
+		s.env = env
+		waiters := s.waiters
+		s.waiters = nil
+		for _, fn := range waiters {
+			fn(env)
+		}
+	}
+	args := "--proxy-server=" + s.proxy.HTTPProxy + " --proxy-bypass-list=<-loopback> --disable-quic --force-webrtc-ip-handling-policy=disable_non_proxied_udp"
+	if extra := browserArguments(b.envUnthrottled, b.envAutoplay); extra != "" {
+		args += " " + extra
+	}
+	language := ""
+	if len(b.languages) > 0 {
+		language = b.languages[0]
+	}
+	if err := createEnvironmentWith(loaderProc(), userData, language, args, done); err != nil {
+		done(0, err)
+	}
+	return sOK
+}
+func (w *window) environment() uintptr {
+	if s := storeOf(w.opts.DataStore); s != nil && s.proxy != nil {
+		return s.env
+	}
+	return w.b.env
+}
+func createController(env uintptr, s *dataStore, hwnd uintptr, composition bool, handler uintptr) uintptr {
 	if s == nil {
 		if composition {
-			env3 := queryInterface(b.env, &iidICoreWebView2Environment3)
+			env3 := queryInterface(env, &iidICoreWebView2Environment3)
 			if env3 == 0 {
 				return eNoInterface // a runtime older than visual hosting
 			}
 			defer release(env3)
 			return comCall(env3, env3CreateCompositionController, hwnd, handler)
 		}
-		return comCall(b.env, envCreateController, hwnd, handler)
+		return comCall(env, envCreateController, hwnd, handler)
 	}
-	env10 := queryInterface(b.env, &iidICoreWebView2Environment10)
+	env10 := queryInterface(env, &iidICoreWebView2Environment10)
 	if env10 == 0 {
 		return eNoInterface
 	}
