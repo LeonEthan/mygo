@@ -43,10 +43,11 @@ type GridState struct {
 	cols, pivot int
 	started     bool
 	rt          *engine
-	// masonry places the items of a MasonryView, and scroll scrolls it to
-	// one: only MasonryView sets them, so that apps with none link none
-	// of its code.
-	masonry *masonry
+	// masonry places the items of a MasonryView (a *masonry), and scroll
+	// scrolls it to one: only MasonryView sets them, so that apps with
+	// none link none of its code, nor, as masonry is no *masonry, its
+	// types.
+	masonry any
 	scroll  func(item int, align Align, near bool)
 }
 
@@ -75,7 +76,15 @@ func (s *GridState) ScrollIntoView(item int) {
 type gridFit struct {
 	cols      int
 	minW, gap float32
-	m         *masonry
+	m         *masonryFit
+}
+
+// masonryFit is what a MasonryView's layout checks of the place of its
+// items (masonry): they were placed width wide, placedGap the view's Gap,
+// and layoutGap is the Gap the last layout had, which the next frame
+// places them with.
+type masonryFit struct {
+	width, placedGap, layoutGap float32
 }
 
 // key returns the key of item i.

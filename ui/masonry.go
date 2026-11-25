@@ -25,12 +25,12 @@ type masonry struct {
 	// view's rows), in cols columns colW wide and gapX apart, gapY above
 	// one another, of which placedGap is the view's Gap. placed tells
 	// that they were.
-	n           int
-	width, colW float32
-	gapX, gapY  float32
-	placedGap   float32
-	cols        int
-	placed      bool
+	masonryFit
+	n          int
+	colW       float32
+	gapX, gapY float32
+	cols       int
+	placed     bool
 	// height is the app's, as this frame gave it.
 	height func(i int, width float32) float32
 	// top and h are each item's place, from the top of the first band,
@@ -45,9 +45,6 @@ type masonry struct {
 	// The content is cut into bands, band high, the rows of the List.
 	band  float32
 	bands int
-	// layoutGap is the Gap the last layout of the view had, which the next
-	// frame places the items with.
-	layoutGap float32
 	// stale is the first item a band built found the height of changed,
 	// -1 for none: the next frame places it and those after anew.
 	stale int
@@ -107,7 +104,7 @@ func coreMasonryView(c *context, s *GridState, n int, minWidth float32, height f
 	}
 	wrapElement(e).Bind(&s.Handle)
 	n = max(n, 0)
-	m := s.masonry
+	m, _ := s.masonry.(*masonry)
 	if m == nil {
 		m = &masonry{stale: -1, anchor: -1}
 		s.masonry = m
@@ -141,7 +138,7 @@ func coreMasonryView(c *context, s *GridState, n int, minWidth float32, height f
 			cursor = cell
 		}
 	}, gridList)
-	e.gridFit = &gridFit{cols: cols, minW: minWidth, gap: gap, m: m}
+	e.gridFit = &gridFit{cols: cols, minW: minWidth, gap: gap, m: &m.masonryFit}
 	e.afterInput(func() { s.keys(e, n, m.step) })
 	s.finish(e, n, gap, cursor)
 	return e

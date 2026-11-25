@@ -44,7 +44,7 @@ func masonryPlaces(n, cols int, colW, gap float32, height func(i int, width floa
 // the frame it is scrolled by as much.
 func checkMasonry(t *testing.T, s *GridState, n, cols int, colW float32, view float32, most int, slack float32, height func(int, float32) float32) {
 	t.Helper()
-	m := s.masonry
+	m := s.masonry.(*masonry)
 	if s.cols != cols || m.colW != colW || m.n != n {
 		t.Fatalf("%d columns %v wide for %d items, not %d %v wide for %d", s.cols, m.colW, m.n, cols, colW, n)
 	}
@@ -193,13 +193,13 @@ func TestMasonryViewResizes(t *testing.T) {
 	checkMasonry(t, &s, n, 4, 106, 400, 56, 0, stickerHeight)
 	resize := func(w, cols int, colW float32, most int) {
 		t.Helper()
-		first := s.masonry.anchor
+		first := s.masonry.(*masonry).anchor
 		if first <= 0 {
 			t.Fatalf("the first item in view is %d", first)
 		}
 		tt.SetSize(w, 400)
 		checkMasonry(t, &s, n, cols, colW, 400, most, 0, stickerHeight)
-		m := s.masonry
+		m := s.masonry.(*masonry)
 		y := listStateOf(&s.rows).scrollY
 		if top := m.top[first] - y; top < 0 || top+float64(m.h[first]) > 400 {
 			t.Errorf("%d wide, item %d, first in view before, shows from %v to %v", w, first, top, top+float64(m.h[first]))
@@ -240,7 +240,7 @@ func TestMasonryViewChanges(t *testing.T) {
 	tt.Frame()
 	checkMasonry(t, &s, n, 4, 106, 400, 56, 0, height)
 	// An item in view grows.
-	m := s.masonry
+	m := s.masonry.(*masonry)
 	tall = m.anchor + 2
 	tt.Frame()
 	checkMasonry(t, &s, n, 4, 106, 400, 56, 0, height)
@@ -270,7 +270,7 @@ func TestMasonryViewGap(t *testing.T) {
 			coreTextf(c, "Sticker %d", i)
 		}).Grow(1).Gap(4)
 	}, 448, 400)
-	m := s.masonry
+	m := s.masonry.(*masonry)
 	lane := m.lanes[0]
 	if a, b := lane[0], lane[1]; m.gapY != 12 || m.top[b] != m.top[a]+float64(m.h[a])+12 {
 		t.Errorf("Gap(4): items %d and %d of a column are %v apart", a, b, m.top[b]-m.top[a]-float64(m.h[a]))
