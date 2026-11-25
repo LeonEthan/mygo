@@ -519,14 +519,17 @@ type WindowOptions struct {
 
 // SessionProxyConfig describes an HTTP proxy for one website data store.
 type SessionProxyConfig struct {
-	HTTPProxy string
-	Username  string
-	Password  string
+	// ContentRulesJSON requires a ready macOS application when non-empty.
+	ContentRulesJSON string
+	HTTPProxy        string
+	Username         string
+	Password         string
 }
 
 // DataStoreOptions describe a website data store (AppController.NewDataStore).
 type DataStoreOptions struct {
-	Proxy *SessionProxyConfig
+	SessionRuleList any
+	Proxy           *SessionProxyConfig
 	// ID identifies a persistent store from one run to the next: a UUID
 	// in lowercase hex with dashes, which the core derives from the
 	// session's name. It is empty for an ephemeral store.

@@ -50,15 +50,19 @@ func compileContentRules(b *Backend, contentID, identifier, rules string, done f
 	}
 	finish := func(list, err id) {
 		switch {
-		case list != 0:
-			done(retain(list), nil)
 		case err != 0:
 			done(nil, contentRulesError(err))
+		case list != 0:
+			done(retain(list), nil)
 		default:
 			done(nil, fmt.Errorf("WebKit made no list"))
 		}
 	}
 	store := retain(send(class("WKContentRuleListStore"), "defaultStore"))
+	if store == 0 {
+		done(nil, fmt.Errorf("WebKit content rule store unavailable"))
+		return
+	}
 	compile := func() {
 		compiled := newBlock(func(_ objc.Block, list, err id) {
 			retain(list)
@@ -129,6 +133,12 @@ func removeStaleContentRules(store id, contentID, current string) {
 	listed.Release()
 }
 
+func (w *window) addSessionContentRules() {
+	if store, ok := w.opts.DataStore.(*dataStore); ok && store.ruleList != 0 {
+		send(w.ucc, "addContentRuleList:", uintptr(store.ruleList))
+	}
+}
+
 // setContentRules replaces the lists of the window's content controller,
 // which WebKit applies to the loads from then on.
 func setContentRules(w *window, lists []any) {
@@ -137,6 +147,7 @@ func setContentRules(w *window, lists []any) {
 	}
 	withPool(func() {
 		send(w.ucc, "removeAllContentRuleLists")
+		w.addSessionContentRules()
 		for _, l := range lists {
 			if list, ok := l.(id); ok {
 				send(w.ucc, "addContentRuleList:", uintptr(list))

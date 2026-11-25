@@ -19,8 +19,9 @@ import (
 
 // dataStore holds a WKWebsiteDataStore, retained until Close.
 type dataStore struct {
-	store  id
-	closed bool
+	ruleList id
+	store    id
+	closed   bool
 }
 
 var inMemoryOnce sync.Once
@@ -31,6 +32,7 @@ var inMemoryOnce sync.Once
 // +nonPersistentDataStore.
 func (a appController) NewDataStore(opts platform.DataStoreOptions) (platform.DataStore, error) {
 	s := &dataStore{}
+	s.ruleList, _ = opts.SessionRuleList.(id)
 	withPool(func() {
 		cls := class("WKWebsiteDataStore")
 		if !opts.Ephemeral && sendBool(cls, "respondsToSelector:", uintptr(sel("dataStoreForIdentifier:"))) {

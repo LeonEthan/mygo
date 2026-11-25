@@ -39,6 +39,7 @@ type Session struct {
 	// does those of the default session.
 	Cookies CookiesModule
 
+	ruleList  any
 	proxy     *SessionProxyConfig
 	name      string
 	ephemeral bool
@@ -107,6 +108,23 @@ func NewProxiedSession(name string, config SessionProxyConfig) (*Session, error)
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		return nil, platform.ErrUnsupported
 	}
+	var ruleList any
+	if config.ContentRulesJSON != "" {
+		if runtime.GOOS != "darwin" {
+			return nil, platform.ErrUnsupported
+		}
+		if !App.IsReady() {
+			return nil, fmt.Errorf("mygo: session content rules require a ready app")
+		}
+		rules, err := CompileContentRules("mygo-session-proxy", config.ContentRulesJSON)
+		if err != nil {
+			return nil, err
+		}
+		if rules.list == nil {
+			return nil, fmt.Errorf("mygo: missing compiled session content rules")
+		}
+		ruleList = rules.list
+	}
 	config.HTTPProxy = "http://" + target.String()
 	sessions.Lock()
 	defer sessions.Unlock()
@@ -116,7 +134,7 @@ func NewProxiedSession(name string, config SessionProxyConfig) (*Session, error)
 		}
 		return nil, fmt.Errorf("mygo: session already exists with different proxy options")
 	}
-	s := &Session{name: name, ephemeral: name == "", proxy: &config}
+	s := &Session{name: name, ephemeral: name == "", proxy: &config, ruleList: ruleList}
 	s.Cookies = CookiesModule{s, &sessionCalls}
 	if name != "" {
 		sessions.named[name] = s
@@ -196,7 +214,7 @@ func (s *Session) detach() {
 // one: a persistent session's is identified by a UUID made of its name,
 // and kept in directories of its own on Linux.
 func openSessionStore(s *Session) (platform.DataStore, error) {
-	opts := platform.DataStoreOptions{Ephemeral: s.ephemeral, Proxy: s.proxy}
+	opts := platform.DataStoreOptions{Ephemeral: s.ephemeral, Proxy: s.proxy, SessionRuleList: s.ruleList}
 	if !s.ephemeral {
 		opts.ID = sessionID(s.name)
 		if runtime.GOOS == "linux" {
