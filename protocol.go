@@ -36,6 +36,14 @@ var reservedSchemes = map[string]bool{
 	"javascript": true, "ws": true, "wss": true, "ftp": true, "mailto": true, "webkit": true,
 }
 
+// SchemeBodyLimits caps desktop custom-scheme request payload bytes. Zero disables a limit.
+type SchemeBodyLimits = platform.SchemeBodyLimits
+
+// SetBodyLimits configures the process-wide custom-scheme request budgets.
+func (p *ProtocolModule) SetBodyLimits(l SchemeBodyLimits) error {
+	return platform.SetSchemeBodyLimits(l)
+}
+
 // Handle serves requests for scheme with an http.Handler, for example
 // files generated at run time:
 //
@@ -129,6 +137,7 @@ func (p *ProtocolModule) serve(w *Window, req *platform.SchemeRequest) {
 }
 
 func serveScheme(win *Window, h http.Handler, req *platform.SchemeRequest) {
+	defer req.BodyReservation.Release()
 	rw := &schemeWriter{req: req, header: http.Header{}}
 	defer func() {
 		if r := recover(); r != nil {

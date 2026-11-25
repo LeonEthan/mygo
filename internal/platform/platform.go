@@ -517,8 +517,16 @@ type WindowOptions struct {
 	OwnScene bool
 }
 
+// SessionProxyConfig describes an HTTP proxy for one website data store.
+type SessionProxyConfig struct {
+	HTTPProxy string
+	Username  string
+	Password  string
+}
+
 // DataStoreOptions describe a website data store (AppController.NewDataStore).
 type DataStoreOptions struct {
+	Proxy *SessionProxyConfig
 	// ID identifies a persistent store from one run to the next: a UUID
 	// in lowercase hex with dashes, which the core derives from the
 	// session's name. It is empty for an ephemeral store.
@@ -1045,6 +1053,7 @@ type NewWindowRequest struct {
 
 // SchemeRequest is a request for a custom protocol.
 type SchemeRequest struct {
+	BodyReservation SchemeBodyReservation
 	// Context is cancelled when the webview no longer needs the response.
 	Context context.Context
 	Method  string

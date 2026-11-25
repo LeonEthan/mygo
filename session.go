@@ -3,8 +3,11 @@ package mygo
 import (
 	"crypto/sha256"
 	"fmt"
+	"net/netip"
+	"net/url"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -36,6 +39,7 @@ type Session struct {
 	// does those of the default session.
 	Cookies CookiesModule
 
+	proxy     *SessionProxyConfig
 	name      string
 	ephemeral bool
 	// store is the backend's data store, made when a page of the session
@@ -83,6 +87,42 @@ func NewSession(name string) *Session {
 	sessions.named[name] = s
 	openStore = openSessionStore
 	return s
+}
+
+// SessionProxyConfig configures an HTTP CONNECT proxy for a desktop session.
+// HTTPProxy must be an http URL with a numeric IP address and explicit port.
+type SessionProxyConfig = platform.SessionProxyConfig
+
+// NewProxiedSession creates a named persistent session, or an ephemeral one
+// for an empty name. A name already using different options is rejected.
+func NewProxiedSession(name string, config SessionProxyConfig) (*Session, error) {
+	u, err := url.Parse(config.HTTPProxy)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return nil, fmt.Errorf("mygo: invalid HTTP proxy endpoint")
+	}
+	target, err := netip.ParseAddrPort(u.Host)
+	if err != nil || target.Port() == 0 || target.Addr().Zone() != "" || strings.ContainsRune(config.Username+config.Password, 0) {
+		return nil, fmt.Errorf("mygo: invalid proxy endpoint or credentials")
+	}
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		return nil, platform.ErrUnsupported
+	}
+	config.HTTPProxy = "http://" + target.String()
+	sessions.Lock()
+	defer sessions.Unlock()
+	if s := sessions.named[name]; s != nil {
+		if s.proxy != nil && *s.proxy == config {
+			return s, nil
+		}
+		return nil, fmt.Errorf("mygo: session already exists with different proxy options")
+	}
+	s := &Session{name: name, ephemeral: name == "", proxy: &config}
+	s.Cookies = CookiesModule{s, &sessionCalls}
+	if name != "" {
+		sessions.named[name] = s
+	}
+	openStore = openSessionStore
+	return s, nil
 }
 
 // NewEphemeralSession returns a new session that keeps its data in
@@ -156,7 +196,7 @@ func (s *Session) detach() {
 // one: a persistent session's is identified by a UUID made of its name,
 // and kept in directories of its own on Linux.
 func openSessionStore(s *Session) (platform.DataStore, error) {
-	opts := platform.DataStoreOptions{Ephemeral: s.ephemeral}
+	opts := platform.DataStoreOptions{Ephemeral: s.ephemeral, Proxy: s.proxy}
 	if !s.ephemeral {
 		opts.ID = sessionID(s.name)
 		if runtime.GOOS == "linux" {

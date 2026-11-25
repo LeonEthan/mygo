@@ -142,7 +142,13 @@ func (w *window) basicAuthenticationRequested(_, args uintptr) {
 			req.Port = 443
 		}
 	}
-	resp := w.h.AuthRequested(req)
+	var resp platform.AuthResponse
+	if s := storeOf(w.opts.DataStore); s != nil && s.proxy != nil && u.Scheme+"://"+u.Host == s.proxy.HTTPProxy && req.Scheme == "basic" {
+		resp.Username = s.proxy.Username
+		resp.Password = s.proxy.Password
+	} else {
+		resp = w.h.AuthRequested(req)
+	}
 	switch {
 	case resp.Default:
 	case resp.Username == "" && resp.Password == "":
