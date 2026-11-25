@@ -411,3 +411,56 @@ func TestSplitLimitsAllocs(t *testing.T) {
 		t.Errorf("a frame of a split with limits allocates %v times, %v without", with, without)
 	}
 }
+
+// TestSplitLimitsSecond bounds the panes of a split whose *size is the
+// second pane's (SplitSecond), 8 DIPs apart (SplitGap), in whichever order
+// the app calls the three: a side panel between 280 and 480 DIPs wide
+// after a chat no narrower than 360 (#2041).
+func TestSplitLimitsSecond(t *testing.T) {
+	type mod func(e *node)
+	mods := map[string]mod{
+		"second": func(e *node) { e.SplitSecond() },
+		"gap":    func(e *node) { e.SplitGap(8) },
+		"limits": func(e *node) { e.SplitLimits(SplitLimits{FirstMin: 360, SecondMin: 280, SecondMax: 480}) },
+	}
+	for _, order := range [][3]string{
+		{"second", "gap", "limits"}, {"second", "limits", "gap"}, {"gap", "second", "limits"},
+		{"gap", "limits", "second"}, {"limits", "second", "gap"}, {"limits", "gap", "second"},
+	} {
+		size := float32(300)
+		var div *node
+		tt := coreNewTester(func(c *context) {
+			first, second := limitsPanes(c)
+			e := coreSplit(c, &size, first, second)
+			for _, m := range order {
+				mods[m](e)
+			}
+			e.Fill()
+			div = c.splitBuilt(e).div
+		}, 1000, 200)
+		tt.Frame()
+		if a, b := laidPanes(tt); a.W != 692 || b.X != 700 || b.W != 300 {
+			t.Fatalf("%v: panes %v and %v, want the second at 700, 300 wide", order, a, b)
+		}
+		if div.accRange != [3]float64{992 - 480, 992 - 280, 692} {
+			t.Errorf("%v: the divider reads %v, want 692 in 512..712", order, div.accRange)
+		}
+		// Left widens the second pane up to its maximum.
+		y := float32(100)
+		drag(tt, 696, y, 396, y)
+		if size != 480 {
+			t.Errorf("%v: dragged past the second's maximum, it is %v wide, want 480", order, size)
+		}
+		drag(tt, 516, y, 916, y)
+		if size != 280 {
+			t.Errorf("%v: dragged past the second's minimum, it is %v wide, want 280", order, size)
+		}
+		// A narrower window: the first keeps its minimum, the second gives
+		// way down to its own, keeping *size.
+		size = 450
+		tt.SetSize(700, 200)
+		if a, b := laidPanes(tt); a.W != 360 || b.W != 332 || size != 450 {
+			t.Errorf("%v: in 700 DIPs, panes %v and %v (size %v), want 360 and 332 wide", order, a, b, size)
+		}
+	}
+}

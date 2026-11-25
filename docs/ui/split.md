@@ -30,6 +30,22 @@ editor does.
 ui.SplitVerticalPercent(c, &app.editorPercent, func() { app.editor(c) }, func() { app.results(c) }).Grow(1)
 ```
 
+`SplitSecond` makes the `*float32` the size of the second pane instead, for
+a panel at the end of the window that keeps its size while the first pane
+takes the rest of the room: a chat's list of members on the right, an
+inspector, or a terminal under an editor. The second pane is on the right
+of `Split` (on the left right to left) and at the bottom of
+`SplitVertical`. The divider moves as before, the arrows the way they
+point, 40 DIPs from either edge; when the window shrinks, the first pane
+gives way down to its 40 DIPs, then the second, which takes its size back
+when there is room again. Of the percent variants, the percentage is the
+second pane's, and `SplitReset` puts the second pane at its value.
+
+```go
+ui.Split(c, &app.membersWidth, func() { app.chat(c) }, func() { app.members(c) }).SplitSecond().Fill()
+ui.SplitVertical(c, &app.terminalHeight, func() { app.editor(c) }, func() { app.terminal(c) }).SplitSecond().Grow(1)
+```
+
 Keep the size in the app's state, and save it to restore the layout when
 the app starts again. The pointer shows a resize cursor over the divider.
 
@@ -44,6 +60,15 @@ as a press on the divider does.
 ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitReset(220).Fill()
 ```
 
+`SplitGap` spaces the two panes apart by a number of DIPs without drawing
+the 1 DIP line between them, as two cards side by side or panes that draw
+their own edges: `SplitGap(0)` puts them flush with no line, and a
+positive gap leaves that room between them, where the resize handle sits.
+
+```go
+ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitGap(8).Fill()
+```
+
 ## Limits
 
 `SplitLimits` gives each pane a minimum and a maximum size, in DIPs for
@@ -52,10 +77,11 @@ other). A zero field sets no limit, and a minimum under the 40 DIPs every
 pane keeps changes nothing. The divider stops where a pane would leave its
 limits, as it stops 40 DIPs from either edge: dragged past one, it waits
 there until the pointer comes back over it, and the arrows go no further.
-As the window changes, both panes stay within their limits: the first
-takes the room the second can't, at its maximum, and gives way to the
-second's minimum. A three-column window keeps its chat column at least
-360 DIPs wide and its side panel between 280 and 480:
+As the window changes, both panes stay within their limits: the pane
+`*size` measures takes the room the other can't, at its maximum, and gives
+way to the other's minimum. The limits name the panes by place, first and
+second, also with `SplitSecond`. A three-column window keeps its chat
+column at least 360 DIPs wide and its side panel between 280 and 480:
 
 ```go
 ui.Split(c, &app.listWidth, func() { app.list(c) }, func() {
@@ -86,4 +112,6 @@ layout those of the build that sets them.
 ## Accessibility
 
 Assistive technology sees the divider as a splitter named "Divider",
-which takes the focus and moves with the arrows.
+which takes the focus and moves with the arrows. Its value is where it
+is from the start of the split, also with `SplitSecond`, so that raising
+it moves it toward the end.
