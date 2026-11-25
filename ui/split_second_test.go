@@ -259,3 +259,49 @@ func TestSplitSecondThroughTheFacade(t *testing.T) {
 		t.Errorf("the second pane starts at %v, want %v", r.X, 400-170)
 	}
 }
+
+// TestSplitSecondGap sizes the second pane with SplitGap's room between
+// the panes, whichever of the two the app calls first: the drag, the
+// arrows and the divider's accessible position all go by it.
+func TestSplitSecondGap(t *testing.T) {
+	for _, gapFirst := range []bool{false, true} {
+		size := float32(100)
+		var a, b Rect
+		var div *node
+		tt := coreNewTester(func(c *context) {
+			e := coreSplit(c, &size, func() {
+				a = coreBox(c).Fill().Bounds()
+			}, func() {
+				b = coreBox(c).Fill().Bounds()
+			})
+			if gapFirst {
+				e.SplitGap(8).SplitSecond()
+			} else {
+				e.SplitSecond().SplitGap(8)
+			}
+			e.Fill()
+			div = c.splitBuilt(e).div
+		}, 300, 100)
+		tt.Frame()
+		if a != (Rect{0, 0, 192, 100}) || b != (Rect{200, 0, 100, 100}) {
+			t.Fatalf("gap first %v: panes at %v and %v, want {0 0 192 100} and {200 0 100 100}", gapFirst, a, b)
+		}
+		if div.accRange[1] != 300-8-40 || div.accRange[2] != 192 {
+			t.Errorf("gap first %v: the divider reads %v of %v, want 192 of %v", gapFirst, div.accRange[2], div.accRange[1], 300-8-40)
+		}
+		drag(tt, 196, 50, 166, 50)
+		tt.Frame()
+		if size != 130 || b.X != 170 {
+			t.Errorf("gap first %v: dragged 30 left, the second pane is %v wide at %v, want 130 at 170", gapFirst, size, b.X)
+		}
+		tt.Key(0, KeyRight)
+		tt.Frame()
+		if size != 120 || a.W != 172 {
+			t.Errorf("gap first %v: Right: the second pane is %v, the first %v, want 120 and 172", gapFirst, size, a.W)
+		}
+		drag(tt, 176, 50, 0, 50)
+		if size != 300-8-40 {
+			t.Errorf("gap first %v: dragged to the left edge, the second pane is %v wide, want %v", gapFirst, size, 300-8-40)
+		}
+	}
+}

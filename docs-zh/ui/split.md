@@ -35,6 +35,12 @@ ui.SplitVertical(c, &app.terminalHeight, func() { app.editor(c) }, func() { app.
 ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitReset(220).Fill()
 ```
 
+`SplitGap` 用指定的 DIP 间距隔开两个窗格，不再绘制 1 DIP 的分隔线，适合并排卡片或各自绘制边框的窗格：`SplitGap(0)` 让两个窗格无缝紧贴，正值则在两者之间留出对应空隙，调整大小的拖动手柄位于其中。
+
+```go
+ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitGap(8).Fill()
+```
+
 ## 辅助功能
 
 辅助技术把分隔条看作名为 "Divider" 的分隔条，它可以获得焦点，并随方向键移动。它的值是分隔条距分栏起始边的位置，使用 `SplitSecond` 时也是如此，因此增大该值会让分隔条移向末端。
